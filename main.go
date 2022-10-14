@@ -13,10 +13,10 @@ import (
 	"log"
 	"os"
 
-	"github.com/tealeg/xlsx/v3"
+	"github.com/neitanod/xlsx/v3"
 )
 
-func generateCSVFromXLSXFile(w io.Writer, excelFileName string, sheetIndex int, csvOpts csvOptSetter) error {
+func generateCSVFromXLSXFile(w io.Writer, excelFileName string, sheetIndex int, rowLimit int, compact bool, csvOpts csvOptSetter) error {
 	xlFile, err := xlsx.OpenFile(excelFileName)
 	if err != nil {
 		return err
@@ -34,8 +34,17 @@ func generateCSVFromXLSXFile(w io.Writer, excelFileName string, sheetIndex int, 
 	}
 	sheet := xlFile.Sheets[sheetIndex]
 	var vals []string
+	var walked = 0;
 	err = sheet.ForEachRow(func(row *xlsx.Row) error {
-		if row != nil {
+
+        if ( rowLimit > 0 && walked > rowLimit ) {
+            return nil
+        }
+        walked++
+
+        cellCount := row.GetCellCount()
+
+		if row != nil && (cellCount > 0 || !compact) {
 			vals = vals[:0]
 			err := row.ForEachCell(func(cell *xlsx.Cell) error {
 				str, err := cell.FormattedValue()
@@ -48,8 +57,8 @@ func generateCSVFromXLSXFile(w io.Writer, excelFileName string, sheetIndex int, 
 			if err != nil {
 				return err
 			}
+		    cw.Write(vals)
 		}
-		cw.Write(vals)
 		return nil
 	})
 	if err != nil {
@@ -65,6 +74,8 @@ func main() {
 	var (
 		outFile    = flag.String("o", "-", "filename to output to. -=stdout")
 		sheetIndex = flag.Int("i", 0, "Index of sheet to convert, zero based")
+        rowLimit   = flag.Int("l", 0, "Limit: Maximum of rows to extract (0 = unlimited)")
+        compact    = flag.Bool("c", false, "Compact output: Whether to omit empty rows from output")
 		delimiter  = flag.String("d", ";", "Delimiter to use between fields")
 	)
 	flag.Usage = func() {
@@ -96,7 +107,7 @@ Usage:
 		}
 	}()
 
-	if err := generateCSVFromXLSXFile(out, flag.Arg(0), *sheetIndex,
+	if err := generateCSVFromXLSXFile(out, flag.Arg(0), *sheetIndex, *rowLimit, *compact,
 		func(cw *csv.Writer) { cw.Comma = ([]rune(*delimiter))[0] },
 	); err != nil {
 		log.Fatal(err)
